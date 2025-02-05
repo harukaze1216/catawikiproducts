@@ -1,52 +1,67 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { generateClient } from "aws-amplify/data";
-import type { Schema } from "@/amplify/data/resource";
-import "./../app/app.css";
-import { Amplify } from "aws-amplify";
-import outputs from "@/amplify_outputs.json";
-import "@aws-amplify/ui-react/styles.css";
+import { useEffect, useState } from "react";
+import { API, graphqlOperation } from "aws-amplify";
+import { listProducts } from "../graphql/queries";
 
-Amplify.configure(outputs);
-
-const client = generateClient<Schema>();
-
-export default function App() {
-  const [todos, setTodos] = useState<Array<Schema["Todo"]["type"]>>([]);
-
-  function listTodos() {
-    client.models.Todo.observeQuery().subscribe({
-      next: (data) => setTodos([...data.items]),
-    });
-  }
+export default function Home() {
+  const [products, setProducts] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState("price");
 
   useEffect(() => {
-    listTodos();
+    fetchProducts();
   }, []);
 
-  function createTodo() {
-    client.models.Todo.create({
-      content: window.prompt("Todo content"),
-    });
-  }
+  const fetchProducts = async () => {
+    try {
+      const response: any = await API.graphql(graphqlOperation(listProducts));
+      setProducts(response.data.listProducts.items);
+    } catch (error) {
+      console.error("Error fetching products:", error);
+    }
+  };
+
+  const filteredProducts = products
+    .filter((product) =>
+      product.product_title.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    .sort((a, b) =>
+      sortBy === "price"
+        ? parseFloat(a.price_eur.replace("€", "")) - parseFloat(b.price_eur.replace("€", ""))
+        : b.bid_count - a.bid_count
+    );
 
   return (
-    <main>
-      <h1>My todos</h1>
-      <button onClick={createTodo}>+ new</button>
-      <ul>
-        {todos.map((todo) => (
-          <li key={todo.id}>{todo.content}</li>
+    <div className="p-4">
+      <h1 className="text-xl font-bold">Catawiki Products</h1>
+
+      <input
+        type="text"
+        placeholder="Search by title"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        className="border p-2"
+      />
+
+      <button onClick={() => setSortBy("price")} className="ml-2 bg-blue-500 text-white p-2">
+        Sort by Price
+      </button>
+      <button onClick={() => setSortBy("bids")} className="ml-2 bg-green-500 text-white p-2">
+        Sort by Bids
+      </button>
+
+      <ul className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {filteredProducts.map((product) => (
+          <li key={product.url} className="border p-2">
+            <img src={product.image_url} alt={product.product_title} className="w-full h-40 object-cover" />
+            <h2 className="font-bold mt-2">{product.product_title}</h2>
+            <p>Price: {product.price_eur}</p>
+            <p>Bids: {product.bid_count}</p>
+            <p>End Time: {new Date(product.end_time).toLocaleString()}</p>
+          </li>
         ))}
       </ul>
-      <div>
-        🥳 App successfully hosted. Try creating a new todo.
-        <br />
-        <a href="https://docs.amplify.aws/nextjs/start/quickstart/nextjs-app-router-client-components/">
-          Review next steps of this tutorial.
-        </a>
-      </div>
-    </main>
+    </div>
   );
 }
